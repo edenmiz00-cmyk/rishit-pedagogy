@@ -108,6 +108,8 @@ input.sl{background:var(--red-l)!important;border-color:#C05050!important;color:
 .map-class-btn.active{background:var(--navy);color:white;border-color:var(--navy);}
 .btn-clear{padding:7px 16px;background:rgba(220,80,80,.1);border:1.5px solid rgba(220,80,80,.35);border-radius:8px;color:#C05050;font-family:'Heebo',sans-serif;font-size:.8rem;font-weight:600;cursor:pointer;transition:all .2s;margin-right:auto;}
 .btn-clear:hover{background:rgba(220,80,80,.2);}
+.btn-export{padding:7px 16px;background:rgba(90,138,106,.12);border:1.5px solid rgba(90,138,106,.4);border-radius:8px;color:#3D7A52;font-family:'Heebo',sans-serif;font-size:.8rem;font-weight:600;cursor:pointer;transition:all .2s;white-space:nowrap;}
+.btn-export:hover{background:rgba(90,138,106,.22);border-color:rgba(90,138,106,.7);}
 .admin-note{font-size:.75rem;color:rgba(229,189,137,.8);background:rgba(61,75,107,.6);padding:4px 12px;border-radius:20px;}
 .legend{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
 .legend-item{display:flex;align-items:center;gap:6px;font-size:.76rem;color:var(--gray700);background:rgba(255,255,255,.75);padding:3px 10px;border-radius:20px;border:1px solid var(--gray100);}
@@ -259,6 +261,7 @@ input.sl{background:var(--red-l)!important;border-color:#C05050!important;color:
       <button class="map-class-btn" data-cls="יב" onclick="switchMapClass('יב')">כיתה יב</button>
     </div>
     <span class="admin-note">✏️ מצב עריכה — לחצי על תא לשינוי</span>
+    <button class="btn-export" onclick="exportToExcel()">📥 ייצוא לאקסל</button>
     <button class="btn-clear" onclick="clearAllData()">🗑️ מחיקת כל הנתונים</button>
   </div>
   <div class="legend">
@@ -526,6 +529,62 @@ function oc(f,v){
   if(v==='דורשת שיפור'||v==='נמוכה'||v==='חיסורים רבים')return 'ol';
   if(v==='שוטטות')return 'ow';return '';
 }
+function exportToExcel(){
+  const FIELDS_HEB=['ציון','יכולת לימודית','תלמידאות','התנהגות','נוכחות','הערה'];
+  const FKEYS=['score','ability','studentship','behavior','presence','note'];
+
+  // Build CSV for each class
+  function buildCSV(cls){
+    const clsData=DATA[cls];
+    // Header row 1: student name + subject groups
+    let h1=['שם התלמידה'];
+    let h2=[''];
+    clsData.mapCols.forEach(col=>{
+      FIELDS_HEB.forEach((f,fi)=>{
+        h1.push(fi===0?col.label:'');
+        h2.push(f);
+      });
+    });
+
+    const rows=[h1,h2];
+    clsData.students.forEach(st=>{
+      const row=[st];
+      clsData.mapCols.forEach(col=>{
+        let found=null,foundTab=null;
+        for(const[tk]of col.tabs){
+          if(clsData.ss[tk]&&clsData.ss[tk].includes(st)){found=get(tk,st)||{};foundTab=tk;break;}
+        }
+        FKEYS.forEach(fk=>{
+          row.push(found&&found[fk]?found[fk]:'');
+        });
+      });
+      rows.push(row);
+    });
+
+    return rows.map(r=>r.map(c=>{
+      const s=String(c).replace(/"/g,'""');
+      return s.includes(',')||s.includes('"')||s.includes('\n')?`"${s}"`:s;
+    }).join(',')).join('\n');
+  }
+
+  // Download CSV for יא
+  const csvA='\uFEFF'+buildCSV('יא');
+  const blobA=new Blob([csvA],{type:'text/csv;charset=utf-8'});
+  const urlA=URL.createObjectURL(blobA);
+  const aA=document.createElement('a');aA.href=urlA;aA.download='מיפוי_ישיבה_פדגוגית_יא.csv';aA.click();
+  URL.revokeObjectURL(urlA);
+
+  // Download CSV for יב (slight delay)
+  setTimeout(()=>{
+    const csvB='\uFEFF'+buildCSV('יב');
+    const blobB=new Blob([csvB],{type:'text/csv;charset=utf-8'});
+    const urlB=URL.createObjectURL(blobB);
+    const aB=document.createElement('a');aB.href=urlB;aB.download='מיפוי_ישיבה_פדגוגית_יב.csv';aB.click();
+    URL.revokeObjectURL(urlB);
+    toast('✓ שני הקבצים יורדים — פתחי ב-Excel');
+  },500);
+}
+
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000);}
 loadAll().then(()=>showTab('class'));
 
