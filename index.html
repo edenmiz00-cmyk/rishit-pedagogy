@@ -530,59 +530,182 @@ function oc(f,v){
   if(v==='שוטטות')return 'ow';return '';
 }
 function exportToExcel(){
-  const FIELDS_HEB=['ציון','יכולת לימודית','תלמידאות','התנהגות','נוכחות','הערה'];
-  const FKEYS=['score','ability','studentship','behavior','presence','note'];
+  // Load SheetJS dynamically
+  if(typeof XLSX==='undefined'){
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload=()=>doExport();
+    document.head.appendChild(s);
+  } else {
+    doExport();
+  }
+}
 
-  // Build CSV for each class
-  function buildCSV(cls){
+function doExport(){
+  const FKEYS=['score','ability','studentship','behavior','presence','note'];
+  const FHEB=['ציון','יכולת לימודית','תלמידאות','התנהגות','נוכחות','הערה'];
+
+  // Color maps
+  const SCORE_COLORS={high:{bg:'C6EFCE',fg:'2D6A4F'},mid:{bg:'FFEB9C',fg:'9A6F00'},low:{bg:'FFC7CE',fg:'A33030'}};
+  const OPT_COLORS={
+    'טובה מאוד':{bg:'C6EFCE',fg:'2D6A4F'},'גבוהה':{bg:'C6EFCE',fg:'2D6A4F'},'סדירה':{bg:'C6EFCE',fg:'2D6A4F'},
+    'טובה':{bg:'FFEB9C',fg:'9A6F00'},
+    'בינונית':{bg:'FFD966',fg:'9A4A10'},'איחורים קלים':{bg:'FFD966',fg:'9A4A10'},
+    'דורשת שיפור':{bg:'FFC7CE',fg:'A33030'},'נמוכה':{bg:'FFC7CE',fg:'A33030'},'חיסורים רבים':{bg:'FFC7CE',fg:'A33030'},
+    'שוטטות':{bg:'FFB3BA',fg:'8A2030'}
+  };
+  const SUBJ_BORDER_COLORS={
+    math3:'888888',math4:'2166AC',math5:'762A83',
+    eng4:'E66000',eng5:'006E3C',comm:'D4780A',med:'B2182B',art:'9B59B6'
+  };
+
+  const wb=XLSX.utils.book_new();
+
+  ['יא','יב'].forEach(cls=>{
     const clsData=DATA[cls];
-    // Header row 1: student name + subject groups
-    let h1=['שם התלמידה'];
-    let h2=[''];
-    clsData.mapCols.forEach(col=>{
-      FIELDS_HEB.forEach((f,fi)=>{
-        h1.push(fi===0?col.label:'');
-        h2.push(f);
+    const ws={};
+    const merges=[];
+    let maxCol=0;
+
+    // Helper: set cell
+    function setCell(r,c,v,style){
+      const addr=XLSX.utils.encode_cell({r,c});
+      ws[addr]={v,t:typeof v==='number'?'n':'s',s:style||{}};
+      if(c>maxCol)maxCol=c;
+    }
+
+    // Style helpers
+    function hdrStyle(bg,fg,bold){
+      return{font:{bold:bold!==false,color:{rgb:fg||'FFFFFF'},name:'Arial',sz:9},
+             fill:{patternType:'solid',fgColor:{rgb:bg||'3D4B6B'}},
+             alignment:{horizontal:'center',vertical:'center',wrapText:true},
+             border:{top:{style:'thin',color:{rgb:'CCCCCC'}},bottom:{style:'thin',color:{rgb:'CCCCCC'}},left:{style:'thin',color:{rgb:'CCCCCC'}},right:{style:'thin',color:{rgb:'CCCCCC'}}}};
+    }
+    function dataStyle(bg,fg,bold,borderColor,borderPos){
+      const b={top:{style:'thin',color:{rgb:borderColor||'DDDDDD'}},bottom:{style:'thin',color:{rgb:borderColor||'DDDDDD'}},left:{style:'thin',color:{rgb:borderColor||'DDDDDD'}},right:{style:'thin',color:{rgb:borderColor||'DDDDDD'}}};
+      if(borderColor){
+        const thick={style:'medium',color:{rgb:borderColor}};
+        const thin={style:'thin',color:{rgb:borderColor}};
+        if(borderPos==='first')b.right=thin;
+        if(borderPos==='last')b.left=thin;
+        b.top=thick;b.bottom=thick;
+        if(borderPos==='first')b.right=thin;
+        if(borderPos==='last')b.left=thin;
+        if(!borderPos){b.top=thick;b.bottom=thick;b.left=thin;b.right=thin;}
+      }
+      return{font:{bold:!!bold,color:{rgb:fg||'333333'},name:'Arial',sz:9},
+             fill:bg?{patternType:'solid',fgColor:{rgb:bg}}:{},
+             alignment:{horizontal:'center',vertical:'center'},
+             border:b};
+    }
+
+    // Row 0: title
+    setCell(0,0,'מיפוי ישיבה פדגוגית – כיתה '+cls,hdrStyle('1F3D5C','FFFFFF',true));
+
+    // Row 1: subject headers, Row 2: field headers
+    setCell(1,0,'שם התלמידה',hdrStyle('1F3D5C','FFFFFF',true));
+    setCell(2,0,'',hdrStyle('1F3D5C','FFFFFF',false));
+    merges.push({s:{r:1,c:0},e:{r:2,c:0}});
+
+    let col=1;
+    const colSubjMap=[]; // [{startCol, bk}]
+    clsData.mapCols.forEach(mc=>{
+      const startCol=col;
+      // subject header
+      setCell(1,col,mc.label,hdrStyle('2E7D9A','FFFFFF',true));
+      merges.push({s:{r:1,c:col},e:{r:1,c:col+5}});
+      // field sub-headers
+      FHEB.forEach((f,fi)=>{
+        setCell(2,col+fi,f,hdrStyle('5B9EC9','FFFFFF',false));
       });
+      // find border key
+      let bk=null;
+      mc.tabs.forEach(([,b])=>{if(b)bk=b;});
+      colSubjMap.push({startCol,bk,tabs:mc.tabs});
+      col+=6;
     });
 
-    const rows=[h1,h2];
-    clsData.students.forEach(st=>{
-      const row=[st];
-      clsData.mapCols.forEach(col=>{
-        let found=null,foundTab=null;
-        for(const[tk]of col.tabs){
-          if(clsData.ss[tk]&&clsData.ss[tk].includes(st)){found=get(tk,st)||{};foundTab=tk;break;}
+    // Title merge
+    merges.push({s:{r:0,c:0},e:{r:0,c:col-1}});
+
+    maxCol=col-1;
+
+    // Data rows
+    clsData.students.forEach((st,si)=>{
+      const row=3+si;
+      const rowBg=si%2===0?'EBF4FA':'FFFFFF';
+
+      // Student name
+      setCell(row,0,st,{
+        font:{bold:true,name:'Arial',sz:9,color:{rgb:'1F3D5C'}},
+        fill:{patternType:'solid',fgColor:{rgb:rowBg}},
+        alignment:{horizontal:'right',vertical:'center'},
+        border:{top:{style:'thin',color:{rgb:'CCCCCC'}},bottom:{style:'thin',color:{rgb:'CCCCCC'}},left:{style:'thin',color:{rgb:'CCCCCC'}},right:{style:'thin',color:{rgb:'CCCCCC'}}}
+      });
+
+      colSubjMap.forEach(({startCol,bk,tabs})=>{
+        let found=null;
+        for(const[tk]of tabs){
+          if(clsData.ss[tk]&&clsData.ss[tk].includes(st)){found=get(tk,st)||{};break;}
         }
-        FKEYS.forEach(fk=>{
-          row.push(found&&found[fk]?found[fk]:'');
+        const borderColor=bk?SUBJ_BORDER_COLORS[bk]:null;
+
+        FKEYS.forEach((fk,fi)=>{
+          const c=startCol+fi;
+          const v=found&&found[fk]?found[fk]:'';
+          const isFirst=fi===0,isLast=fi===5;
+          let bg=rowBg,fg='333333',bold=false;
+
+          if(v){
+            if(fi===0){
+              const n=parseInt(v);
+              if(n>=71){bg=SCORE_COLORS.high.bg;fg=SCORE_COLORS.high.fg;bold=true;}
+              else if(n>=55){bg=SCORE_COLORS.mid.bg;fg=SCORE_COLORS.mid.fg;bold=true;}
+              else{bg=SCORE_COLORS.low.bg;fg=SCORE_COLORS.low.fg;bold=true;}
+            } else if(fi<5&&OPT_COLORS[v]){
+              bg=OPT_COLORS[v].bg;fg=OPT_COLORS[v].fg;bold=true;
+            }
+          }
+
+          // Build border
+          const thinCC={style:'thin',color:{rgb:'CCCCCC'}};
+          const thickBC=borderColor?{style:'medium',color:{rgb:borderColor}}:thinCC;
+          const thinBC=borderColor?{style:'thin',color:{rgb:borderColor}}:thinCC;
+          const border={
+            top:thickBC,bottom:thickBC,
+            right:isFirst?thickBC:thinBC,
+            left:isLast?thickBC:thinBC
+          };
+
+          const cellV=v===''?(found?'–':'–'):v;
+          ws[XLSX.utils.encode_cell({r:row,c})]={
+            v:fi===0&&v?parseInt(v)||v:cellV,
+            t:fi===0&&v&&!isNaN(parseInt(v))?'n':'s',
+            s:{font:{bold,name:'Arial',sz:9,color:{rgb:fg}},
+               fill:bg?{patternType:'solid',fgColor:{rgb:bg}}:{},
+               alignment:{horizontal:fi===5?'right':'center',vertical:'center',wrapText:fi===5},
+               border}
+          };
         });
       });
-      rows.push(row);
     });
 
-    return rows.map(r=>r.map(c=>{
-      const s=String(c).replace(/"/g,'""');
-      return s.includes(',')||s.includes('"')||s.includes('\n')?`"${s}"`:s;
-    }).join(',')).join('\n');
-  }
+    // Column widths
+    const colWidths=[{wch:20}];
+    clsData.mapCols.forEach(()=>{
+      colWidths.push({wch:7},{wch:14},{wch:14},{wch:14},{wch:14},{wch:18});
+    });
 
-  // Download CSV for יא
-  const csvA='\uFEFF'+buildCSV('יא');
-  const blobA=new Blob([csvA],{type:'text/csv;charset=utf-8'});
-  const urlA=URL.createObjectURL(blobA);
-  const aA=document.createElement('a');aA.href=urlA;aA.download='מיפוי_ישיבה_פדגוגית_יא.csv';aA.click();
-  URL.revokeObjectURL(urlA);
+    ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:2+clsData.students.length,c:maxCol}});
+    ws['!merges']=merges;
+    ws['!cols']=colWidths;
+    ws['!rows']=[{hpt:22},{hpt:28},{hpt:52},...clsData.students.map(()=>({hpt:20}))];
 
-  // Download CSV for יב (slight delay)
-  setTimeout(()=>{
-    const csvB='\uFEFF'+buildCSV('יב');
-    const blobB=new Blob([csvB],{type:'text/csv;charset=utf-8'});
-    const urlB=URL.createObjectURL(blobB);
-    const aB=document.createElement('a');aB.href=urlB;aB.download='מיפוי_ישיבה_פדגוגית_יב.csv';aB.click();
-    URL.revokeObjectURL(urlB);
-    toast('✓ שני הקבצים יורדים — פתחי ב-Excel');
-  },500);
+    XLSX.utils.book_append_sheet(wb,ws,'כיתה '+cls);
+  });
+
+  XLSX.writeFile(wb,'מיפוי_ישיבה_פדגוגית.xlsx');
+  toast('✓ הקובץ מוריד — פתחי ב-Excel');
 }
 
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000);}
