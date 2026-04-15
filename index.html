@@ -307,7 +307,33 @@ const BC={math3:'#888888',math4:'#2166AC',math5:'#762A83',eng4:'#E66000',eng5:'#
 let isAdmin=false, curClass='', cS='', cSt=[], mapClass='יא';
 const mem={};
 
+const API_URL='https://script.google.com/macros/s/AKfycbzhmxRQj6J2c_-gHbsbmC_hQxeCFRWu2gYLwpO8p-qukxBd-pq04HhdyKpCZtPViNGUDQ/exec';
+
 async function loadAll(){
+  // Load from Google Sheets for both classes
+  for(const cls of ['יא','יב']){
+    try{
+      const r=await fetch(API_URL+'?class='+encodeURIComponent(cls));
+      const json=await r.json();
+      if(json.status==='ok'){
+        json.data.forEach(row=>{
+          const tab=DATA[cls].subjMap[row['מקצוע']];
+          const student=row['שם התלמידה'];
+          if(!tab||!student)return;
+          if(!mem[tab])mem[tab]={};
+          mem[tab][student]={
+            score:row['ציון'],
+            ability:row['יכולת לימודית'],
+            studentship:row['תלמידאות'],
+            behavior:row['התנהגות'],
+            presence:row['נוכחות'],
+            note:row['הערה']
+          };
+        });
+      }
+    }catch(e){console.log('load error',e);}
+  }
+  // Also load from local storage as fallback
   try{
     const r=await window.storage.list('ped__');
     if(r?.keys)for(const k of r.keys){
@@ -315,12 +341,14 @@ async function loadAll(){
         const v=await window.storage.get(k);
         if(v?.value){
           const p=k.split('__');const s=p[1],st=p.slice(2).join('__');
-          if(!mem[s])mem[s]={};mem[s][st]=JSON.parse(v.value);
+          if(!mem[s])mem[s]={};
+          if(!mem[s][st])mem[s][st]=JSON.parse(v.value);
         }
       }catch(e){}
     }
   }catch(e){}
 }
+
 function save(tab,student,obj){
   if(!mem[tab])mem[tab]={};mem[tab][student]=obj;
   try{window.storage.set('ped__'+tab+'__'+student,JSON.stringify(obj));}catch(e){}
@@ -420,17 +448,59 @@ function uc(){
   rows.forEach(r=>{if(r.querySelector('.si').value||[...r.querySelectorAll('select')].some(x=>x.value))f++;});
   document.getElementById('fill-counter').textContent=f+' מתוך '+rows.length+' מולאו';
 }
-function submitData(){
+async function submitData(){
+  const rows=[];
   document.querySelectorAll('#entry-tbody tr').forEach(r=>{
-    const st=r.querySelector('.si').dataset.s;const score=r.querySelector('.si').value;
-    const sels=[...r.querySelectorAll('select')];const note=r.querySelector('.ni').value;
+    const st=r.querySelector('.si').dataset.s;
+    const score=r.querySelector('.si').value;
+    const sels=[...r.querySelectorAll('select')];
+    const note=r.querySelector('.ni').value;
     const ability=sels[0].value,studentship=sels[1].value,behavior=sels[2].value,presence=sels[3].value;
-    if(score||ability||studentship||behavior||presence||note)
+    if(score||ability||studentship||behavior||presence||note){
       save(cS,st,{score,ability,studentship,behavior,presence,note});
+      rows.push({student:st,score,ability,studentship,behavior,presence,note});
+    }
   });
-  toast('✓ הנתונים נשמרו!');
-  document.getElementById('form-inner').style.display='none';
-  document.getElementById('success-msg').style.display='block';
+
+  if(rows.length===0){
+    toast('⚠️ לא הוזנו נתונים');return;
+  }
+
+  // Show saving indicator
+  const btn=document.querySelector('.btn-submit');
+  btn.textContent='שומר...';btn.disabled=true;
+
+  try{
+    const subjLabel=document.getElementById('form-badge').textContent;
+    const teacherName=document.getElementById('form-title').textContent.replace('מורה: ','');
+
+    const payload=JSON.stringify({
+      teacher:teacherName,
+      class:curClass,
+      subject:subjLabel,
+      rows
+    });
+
+    // Use no-cors to avoid CORS blocking — response will be opaque but data gets saved
+    await fetch(API_URL,{
+      method:'POST',
+      mode:'no-cors',
+      headers:{'Content-Type':'text/plain'},
+      body:payload
+    });
+
+    toast('✓ הנתונים נשמרו בגוגל שיטס!');
+    document.getElementById('form-inner').style.display='none';
+    document.getElementById('success-msg').style.display='block';
+
+  }catch(err){
+    toast('⚠️ נשמר מקומית — בדקי חיבור לאינטרנט');
+    document.getElementById('form-inner').style.display='none';
+    document.getElementById('success-msg').style.display='block';
+    console.error(err);
+  }finally{
+    btn.textContent='שמירה ועדכון מיפוי ✓';btn.disabled=false;
+  }
 }
 function resetToEntry(){document.getElementById('panel-form').style.display='none';showTab('entry');}
 function backToClass(){showTab('class');}
