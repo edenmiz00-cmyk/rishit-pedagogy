@@ -310,43 +310,47 @@ const mem={};
 const API_URL='https://script.google.com/macros/s/AKfycbzhmxRQj6J2c_-gHbsbmC_hQxeCFRWu2gYLwpO8p-qukxBd-pq04HhdyKpCZtPViNGUDQ/exec';
 
 async function loadAll(){
-  // Load from Google Sheets for both classes
+  // Load from Google Sheets using JSONP to avoid CORS
   for(const cls of ['יא','יב']){
-    try{
-      const r=await fetch(API_URL+'?class='+encodeURIComponent(cls));
-      const json=await r.json();
-      if(json.status==='ok'){
-        json.data.forEach(row=>{
-          const tab=DATA[cls].subjMap[row['מקצוע']];
-          const student=row['שם התלמידה'];
-          if(!tab||!student)return;
-          if(!mem[tab])mem[tab]={};
-          mem[tab][student]={
-            score:row['ציון'],
-            ability:row['יכולת לימודית'],
-            studentship:row['תלמידאות'],
-            behavior:row['התנהגות'],
-            presence:row['נוכחות'],
-            note:row['הערה']
-          };
-        });
-      }
-    }catch(e){console.log('load error',e);}
+    await new Promise(resolve=>{
+      const callbackName='cb_'+cls.replace(/[^a-z]/gi,'_')+'_'+Date.now();
+      window[callbackName]=function(json){
+        try{
+          if(json.status==='ok'){
+            json.data.forEach(row=>{
+              const subjectLabel=row['מקצוע'];
+              const student=row['שם התלמידה'];
+              const clsData=DATA[cls];
+              if(!clsData||!subjectLabel||!student)return;
+              const tab=clsData.subjMap[subjectLabel];
+              if(!tab)return;
+              if(!mem[tab])mem[tab]={};
+              // Only set if not already set (don't overwrite newer local data)
+              if(!mem[tab][student]){
+                mem[tab][student]={
+                  score:String(row['ציון']||''),
+                  ability:String(row['יכולת לימודית']||''),
+                  studentship:String(row['תלמידאות']||''),
+                  behavior:String(row['התנהגות']||''),
+                  presence:String(row['נוכחות']||''),
+                  note:String(row['הערה']||'')
+                };
+              }
+            });
+          }
+        }catch(e){console.log('parse error',e);}
+        delete window[callbackName];
+        document.getElementById('script_'+callbackName)?.remove();
+        resolve();
+      };
+      const s=document.createElement('script');
+      s.id='script_'+callbackName;
+      s.src=API_URL+'?class='+encodeURIComponent(cls)+'&callback='+callbackName;
+      s.onerror=()=>{delete window[callbackName];resolve();};
+      setTimeout(()=>{delete window[callbackName];resolve();},8000);
+      document.head.appendChild(s);
+    });
   }
-  // Also load from local storage as fallback
-  try{
-    const r=await window.storage.list('ped__');
-    if(r?.keys)for(const k of r.keys){
-      try{
-        const v=await window.storage.get(k);
-        if(v?.value){
-          const p=k.split('__');const s=p[1],st=p.slice(2).join('__');
-          if(!mem[s])mem[s]={};
-          if(!mem[s][st])mem[s][st]=JSON.parse(v.value);
-        }
-      }catch(e){}
-    }
-  }catch(e){}
 }
 
 function save(tab,student,obj){
