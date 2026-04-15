@@ -307,49 +307,33 @@ const BC={math3:'#888888',math4:'#2166AC',math5:'#762A83',eng4:'#E66000',eng5:'#
 let isAdmin=false, curClass='', cS='', cSt=[], mapClass='יא';
 const mem={};
 
-const API_URL='https://script.google.com/macros/s/AKfycbyN-7BCTsdl6ZLlWzczxhJ4-eZXj-yAYO3LujM1NyUBpDzUxF29DtG0OthJXRTM6ORA/exec';
+const API_URL='/api/sheets';
 
 async function loadAll(){
-  // Load from Google Sheets using JSONP to avoid CORS
   for(const cls of ['יא','יב']){
-    await new Promise(resolve=>{
-      const callbackName='cb_'+cls.replace(/[^a-z]/gi,'_')+'_'+Date.now();
-      window[callbackName]=function(json){
-        try{
-          if(json.status==='ok'){
-            json.data.forEach(row=>{
-              const subjectLabel=row['מקצוע'];
-              const student=row['שם התלמידה'];
-              const clsData=DATA[cls];
-              if(!clsData||!subjectLabel||!student)return;
-              const tab=clsData.subjMap[subjectLabel];
-              if(!tab)return;
-              if(!mem[tab])mem[tab]={};
-              // Only set if not already set (don't overwrite newer local data)
-              if(!mem[tab][student]){
-                mem[tab][student]={
-                  score:String(row['ציון']||''),
-                  ability:String(row['יכולת לימודית']||''),
-                  studentship:String(row['תלמידאות']||''),
-                  behavior:String(row['התנהגות']||''),
-                  presence:String(row['נוכחות']||''),
-                  note:String(row['הערה']||'')
-                };
-              }
-            });
-          }
-        }catch(e){console.log('parse error',e);}
-        delete window[callbackName];
-        document.getElementById('script_'+callbackName)?.remove();
-        resolve();
-      };
-      const s=document.createElement('script');
-      s.id='script_'+callbackName;
-      s.src=API_URL+'?class='+encodeURIComponent(cls)+'&callback='+callbackName;
-      s.onerror=()=>{delete window[callbackName];resolve();};
-      setTimeout(()=>{delete window[callbackName];resolve();},8000);
-      document.head.appendChild(s);
-    });
+    try{
+      const resp=await fetch(API_URL+'?class='+encodeURIComponent(cls));
+      const json=await resp.json();
+      if(json.status==='ok'&&json.data){
+        json.data.forEach(row=>{
+          const subjectLabel=row['מקצוע'];
+          const student=row['שם התלמידה'];
+          const clsData=DATA[cls];
+          if(!clsData||!subjectLabel||!student)return;
+          const tab=clsData.subjMap[subjectLabel];
+          if(!tab)return;
+          if(!mem[tab])mem[tab]={};
+          mem[tab][student]={
+            score:String(row['ציון']||''),
+            ability:String(row['יכולת לימודית']||''),
+            studentship:String(row['תלמידאות']||''),
+            behavior:String(row['התנהגות']||''),
+            presence:String(row['נוכחות']||''),
+            note:String(row['הערה']||'')
+          };
+        });
+      }
+    }catch(e){console.log('load error',cls,e);}
   }
 }
 
@@ -485,11 +469,9 @@ async function submitData(){
       rows
     });
 
-    // Use no-cors to avoid CORS blocking — response will be opaque but data gets saved
     await fetch(API_URL,{
       method:'POST',
-      mode:'no-cors',
-      headers:{'Content-Type':'text/plain'},
+      headers:{'Content-Type':'application/json'},
       body:payload
     });
 
