@@ -123,7 +123,13 @@ input.sl{background:var(--red-l)!important;border-color:#C05050!important;color:
 .mt tbody tr:nth-child(even){background:#F5F2ED;}
 .mt tbody tr:hover{background:#EDE8DF;}
 .mt tbody td{padding:4px 5px;border:1px solid #E5DFD5;text-align:center;white-space:nowrap;}
-.mt tbody td.mn{text-align:right;font-weight:600;font-size:.78rem;padding-right:10px;color:var(--navy);min-width:144px;background:inherit;position:sticky;right:0;box-shadow:-2px 0 8px rgba(0,0,0,.05);border-right:2px solid var(--gold);}
+.mt tbody td.mn{text-align:right;font-weight:600;font-size:.78rem;padding-right:10px;color:var(--navy);min-width:144px;background:inherit;position:sticky;right:0;z-index:2;box-shadow:-2px 0 8px rgba(0,0,0,.08);border-right:2px solid var(--gold);}
+.mt thead tr:first-child th{position:sticky;top:0;z-index:3;background:#3D4B6B;}
+.mt thead tr:nth-child(2) th{position:sticky;top:30px;z-index:3;background:#5A6B8A;}
+.mt thead tr:first-child th.sh{background:#4D5E80;}
+.mt thead tr:first-child th:first-child{position:sticky;top:0;right:0;z-index:6;background:#3D4B6B;}
+.mt thead tr:nth-child(2) th:first-child{position:sticky;top:30px;right:0;z-index:6;background:#5A6B8A;}
+.map-wrap{overflow:auto;border-radius:12px;box-shadow:0 2px 18px rgba(106,113,133,.11);border:1px solid rgba(229,189,137,.2);max-height:78vh;}
 .dash{color:#C8C2B8;font-size:.78rem;}
 .chip{display:inline-block;padding:2px 7px;border-radius:10px;font-weight:700;font-size:.7rem;}
 .cg{background:var(--green-l);color:var(--score-g);}
@@ -511,7 +517,7 @@ function renderMap(cls){
   const thead=t.createTHead();
   const r1=thead.insertRow();
   const nt=document.createElement('th');nt.textContent='שם התלמידה';nt.rowSpan=2;
-  nt.style.cssText='position:sticky;right:0;z-index:3;min-width:144px;text-align:right;padding-right:10px;border-right:2px solid rgba(229,189,137,.6)';
+  nt.style.cssText='position:sticky;top:0;right:0;z-index:5;min-width:144px;text-align:right;padding-right:10px;border-right:2px solid rgba(229,189,137,.6);background:var(--navy)';
   r1.appendChild(nt);
   clsData.mapCols.forEach(c=>{const h=document.createElement('th');h.textContent=c.label;h.colSpan=6;h.className='sh';r1.appendChild(h);});
   const r2=thead.insertRow();
